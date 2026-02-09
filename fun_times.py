@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import sys
 import os
+import platform
 
 # Check Python version
 if sys.version_info < (3, 6):
@@ -318,36 +319,142 @@ times = {'All Day': {'daytype': DayType('08:00', '19:30'), 'dayname': "All Day"}
 
 # Setting up the gui program
 gui = tk.Tk()
-gui.title("Fun Times Tides")
-gui.geometry("500x500")
+gui.title("Fun Times Tides 🏊‍♂️")
+gui.geometry("600x650")
+gui.configure(bg='#e3f2fd')  # Light blue background
+
+# Configure fonts
+title_font = ('Helvetica', 16, 'bold')
+button_font = ('Helvetica', 11)
+label_font = ('Helvetica', 12)
+
+# Title label
+title_label = tk.Label(gui, text="🌊 Swimming Tide Checker 🌊", 
+                       font=title_font, bg='#e3f2fd', fg='#01579b')
+title_label.pack(pady=15)
+
+# Frame for selectors
+selector_frame = tk.Frame(gui, bg='#e3f2fd')
+selector_frame.pack(pady=10)
+
+# Beach selector
+beach_label = tk.Label(selector_frame, text="Select Beach:", 
+                      font=label_font, bg='#e3f2fd', fg='#01579b')
+beach_label.grid(row=0, column=0, padx=10, pady=5, sticky='e')
 
 sw_beach = tk.StringVar(gui)
 sw_beach.set(list(beach_dict.keys())[0])
+
+beach_selector = tk.OptionMenu(selector_frame, sw_beach, *beaches)
+beach_selector.config(font=button_font, bg='white', width=15, relief='solid', bd=1)
+beach_selector.grid(row=0, column=1, padx=10, pady=5)
+
+# Time selector
+time_label = tk.Label(selector_frame, text="Swim Time:", 
+                     font=label_font, bg='#e3f2fd', fg='#01579b')
+time_label.grid(row=1, column=0, padx=10, pady=5, sticky='e')
+
 sw_time = tk.StringVar(gui)
 sw_time.set(list(times.keys())[0])
 
-beach_selector = tk.OptionMenu(gui, sw_beach, *beaches)
-beach_selector.pack()
+time_selector = tk.OptionMenu(selector_frame, sw_time, *list(times.keys()))
+time_selector.config(font=button_font, bg='white', width=15, relief='solid', bd=1)
+time_selector.grid(row=1, column=1, padx=10, pady=5)
 
-time_selector = tk.OptionMenu(gui, sw_time, *list(times.keys()))
-time_selector.pack()
+# Frame for action buttons
+button_frame = tk.Frame(gui, bg='#e3f2fd')
+button_frame.pack(pady=15)
 
-# button = tk.Button(gui, text='When is it good to swim?', command=display_swim_times)
-# button.pack()
+# Platform-specific button styling
+is_mac = platform.system() == 'Darwin'
 
-swim_today = tk.Button(gui, text='Can I swim today?', command=today_swim_times)
-swim_today.pack()
+if is_mac:
+    # Mac styling - uses highlightbackground
+    button_style = {
+        'font': button_font,
+        'relief': 'raised',
+        'bd': 3,
+        'padx': 20,
+        'pady': 10,
+        'cursor': 'hand2',
+        'highlightbackground': '#0288d1',
+        'width': 18
+    }
+    clear_style = {
+        'font': button_font,
+        'relief': 'raised',
+        'bd': 3,
+        'padx': 20,
+        'pady': 10,
+        'cursor': 'hand2',
+        'highlightbackground': '#f44336',
+        'width': 18
+    }
+else:
+    # Windows/Linux styling - uses bg and fg
+    button_style = {
+        'font': button_font,
+        'bg': '#0288d1',
+        'fg': 'white',
+        'relief': 'raised',
+        'bd': 2,
+        'padx': 20,
+        'pady': 10,
+        'activebackground': '#01579b',
+        'activeforeground': 'white',
+        'cursor': 'hand2',
+        'width': 18
+    }
+    clear_style = {
+        'font': button_font,
+        'bg': '#f44336',
+        'fg': 'white',
+        'relief': 'raised',
+        'bd': 2,
+        'padx': 20,
+        'pady': 10,
+        'activebackground': '#c62828',
+        'activeforeground': 'white',
+        'cursor': 'hand2',
+        'width': 18
+    }
 
-swim_tomorrow = tk.Button(gui, text='Can I swim tomorrow?', command=tomorrow_swim_times)
-swim_tomorrow.pack()
+swim_today = tk.Button(button_frame, text='Can I swim today?', 
+                       command=today_swim_times, **button_style)
+swim_today.grid(row=0, column=0, padx=5, pady=5)
 
-future_swim = tk.Button(gui, text='When can I swim in the next 2 weeks?', command=future_swim_report)
-future_swim.pack()
+swim_tomorrow = tk.Button(button_frame, text='Can I swim tomorrow?', 
+                         command=tomorrow_swim_times, **button_style)
+swim_tomorrow.grid(row=0, column=1, padx=5, pady=5)
 
-clear_button = tk.Button(gui, text='Clear Output', command=clear_output)
-clear_button.pack()
+future_swim = tk.Button(button_frame, text='Next 2 weeks', 
+                       command=future_swim_report, **button_style)
+future_swim.grid(row=1, column=0, padx=5, pady=5)
 
-message = tk.Text(gui, width=200, height=70)
-message.pack()
+clear_button = tk.Button(button_frame, text='Clear Output', 
+                        command=clear_output, **clear_style)
+clear_button.grid(row=1, column=1, padx=5, pady=5)
+
+# Text output with scrollbar
+output_frame = tk.Frame(gui, bg='#e3f2fd')
+output_frame.pack(pady=10, padx=20, fill='both', expand=True)
+
+scrollbar = tk.Scrollbar(output_frame)
+scrollbar.pack(side='right', fill='y')
+
+message = tk.Text(output_frame, 
+                 width=70, 
+                 height=20,
+                 font=('Monaco', 10),
+                 bg='#ffffff',
+                 fg='#263238',
+                 relief='solid',
+                 bd=1,
+                 padx=10,
+                 pady=10,
+                 yscrollcommand=scrollbar.set,
+                 wrap='word')
+message.pack(side='left', fill='both', expand=True)
+scrollbar.config(command=message.yview)
 
 gui.mainloop()
