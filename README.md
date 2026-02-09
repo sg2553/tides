@@ -22,22 +22,12 @@ Make sure all these files are in the same folder:
 
 ### 4. Set Up Your NIWA API Key
 
-### 4. Set Up Your NIWA API Key
-
-**Option A: Using a .env file (Recommended)**
 1. Copy `.env.example` to `.env`:
    - Mac/Linux: `cp .env.example .env`
    - Windows: `copy .env.example .env`
 2. Open `.env` in a text editor
 3. Replace `your_api_key_here` with your actual NIWA API key
 4. Save the file
-
-**Option B: Set environment variable directly**
-- **Mac/Linux**: `export NIWA_API_KEY=your_api_key_here`
-- **Windows Command Prompt**: `set NIWA_API_KEY=your_api_key_here`
-- **Windows PowerShell**: `$env:NIWA_API_KEY="your_api_key_here"`
-
-Note: Option B is temporary and will reset when you close your terminal.
 
 ### 5. Get a NIWA API Key
 If you don't have an API key yet, visit: https://api.niwa.co.nz/
