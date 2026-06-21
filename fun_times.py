@@ -15,6 +15,7 @@ missing_packages = []
 
 try:
     import tkinter as tk
+    from tkinter import filedialog, messagebox
 except ImportError:
     missing_packages.append("tkinter")
 
@@ -31,8 +32,14 @@ except ImportError:
 try:
     from astral import LocationInfo
     from astral.sun import sun
+    from astral import moon
 except ImportError:
     missing_packages.append("astral")
+
+try:
+    from fpdf import FPDF
+except ImportError:
+    missing_packages.append("fpdf2")  # pip name differs from import name "fpdf"
 
 if missing_packages:
     print("Error: Missing required packages!")
@@ -136,6 +143,33 @@ def get_sunrise_sunset(lat, lng, date_obj):
     sunset_str = sunset_auckland.strftime('%H:%M')
     
     return sunrise_str, sunset_str
+
+
+PHASE_NAMES = [
+    "New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous",
+    "Full Moon", "Waning Gibbous", "Last Quarter", "Waning Crescent",
+]
+
+
+def get_moon_phase(date_obj):
+    """Get a human-readable moon phase name for a given date."""
+    phase_value = moon.phase(date_obj)
+    bucket = int(phase_value // (29.53 / 8)) % 8
+    return PHASE_NAMES[bucket]
+
+
+def get_hourly_tide_heights(df, date_obj):
+    """
+    Look up tide height (meters) at each hour from 05:00 to 22:00 inclusive
+    for a given day, using the nearest prior reading.
+    """
+    date_str = date_obj.strftime('%Y-%m-%d')
+    target_times = pd.to_datetime(
+        [f'{date_str} {h:02d}:00' for h in range(5, 23)]
+    ).tz_localize('Pacific/Auckland')
+    nearest_values = df['value'].asof(target_times)
+    return [(t.strftime('%H:%M'), (round(float(v), 2) if pd.notna(v) else None))
+            for t, v in zip(target_times, nearest_values)]
 
 
 def swim_time_message(start, end):
@@ -287,6 +321,97 @@ def tomorrow_swim_times():
 def future_swim_report():
     swim_times('future', '14')
 
+
+def generate_detailed_report(start_date_str, num_days):
+    """
+    Build a one-PDF, one-page-per-day tide/sun/moon report for the
+    currently selected beach, and prompt the user to save it.
+
+    Returns the saved file path, or None if the user cancelled the save dialog.
+    Raises RuntimeError on NIWA API errors.
+    """
+    base_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    current_beach = beach_dict[sw_beach.get()]
+    report_request = QueryType(start_date_str, str(num_days))
+    r = report_request.query_niwa(current_beach)
+
+    if r.status_code != 200:
+        raise RuntimeError(f'NIWA API Error: Status {r.status_code} - {r.text}')
+
+    response_data = r.json()
+    if 'values' not in response_data:
+        raise RuntimeError(f'NIWA API Error: Unexpected response format: {response_data}')
+
+    df = pd.json_normalize(response_data['values']).set_index('time')
+    df.index = pd.to_datetime(df.index).tz_convert('Pacific/Auckland')
+
+    pdf = FPDF(orientation='P', unit='mm', format='A4')
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    for i in range(num_days):
+        current_date = base_date + timedelta(days=i)
+        pdf.add_page()
+        pdf.set_font('Helvetica', 'B', 16)
+        pdf.cell(0, 10, f'{sw_beach.get()} Tide Report - {current_date.strftime("%A %d %B %Y")}', ln=True)
+        pdf.ln(4)
+
+        sunrise_time, sunset_time = get_sunrise_sunset(current_beach.lat, current_beach.long, current_date)
+        pdf.set_font('Helvetica', '', 12)
+        pdf.cell(0, 8, f'Sunrise: {sunrise_time}   Sunset: {sunset_time}', ln=True)
+        pdf.cell(0, 8, f'Moon Phase: {get_moon_phase(current_date)}', ln=True)
+        pdf.ln(6)
+
+        pdf.set_font('Helvetica', 'B', 12)
+        pdf.cell(60, 8, 'Time', border=1)
+        pdf.cell(60, 8, 'Tide Height (m)', border=1, ln=True)
+        pdf.set_font('Helvetica', '', 12)
+        for time_str, height in get_hourly_tide_heights(df, current_date):
+            pdf.cell(60, 8, time_str, border=1)
+            pdf.cell(60, 8, f'{height:.2f} m' if height is not None else 'N/A', border=1, ln=True)
+
+    default_name = f'{sw_beach.get()}_tide_report_{start_date_str}.pdf'
+    save_path = filedialog.asksaveasfilename(
+        defaultextension='.pdf', initialfile=default_name,
+        filetypes=[('PDF files', '*.pdf')],
+    )
+    if not save_path:
+        return None  # user cancelled, no file written
+    pdf.output(save_path)
+    return save_path
+
+
+def generate_report_callback():
+    start_date_str = report_date_entry.get().strip()
+    try:
+        num_days = int(report_days_spinbox.get())
+    except ValueError:
+        messagebox.showerror('Invalid Input', 'Number of days must be a whole number.')
+        return
+
+    try:
+        datetime.strptime(start_date_str, '%Y-%m-%d')
+    except ValueError:
+        messagebox.showerror('Invalid Date', 'Please enter the date as YYYY-MM-DD.')
+        return
+
+    if not (1 <= num_days <= 30):
+        messagebox.showerror('Invalid Input', 'Number of days must be between 1 and 30.')
+        return
+
+    try:
+        saved_path = generate_detailed_report(start_date_str, num_days)
+    except RuntimeError as e:
+        messagebox.showerror('NIWA API Error', str(e))
+        return
+    except Exception as e:
+        messagebox.showerror('Error', f'Failed to generate report: {e}')
+        return
+
+    if saved_path:
+        messagebox.showinfo('Report Saved', f'Detailed report saved to:\n{saved_path}')
+    # else: user cancelled the save dialog - no-op, no popup
+
+
 def clear_output():
     message.delete(1.0, 'end')
 
@@ -361,6 +486,27 @@ time_selector = tk.OptionMenu(selector_frame, sw_time, *list(times.keys()))
 time_selector.config(font=button_font, bg='white', width=15, relief='solid', bd=1)
 time_selector.grid(row=1, column=1, padx=10, pady=5)
 
+# Frame for detailed report controls
+report_frame = tk.Frame(gui, bg='#e3f2fd')
+report_frame.pack(pady=10)
+
+report_date_label = tk.Label(report_frame, text="Start Date (YYYY-MM-DD):",
+                             font=label_font, bg='#e3f2fd', fg='#01579b')
+report_date_label.grid(row=0, column=0, padx=10, pady=5, sticky='e')
+
+report_date_entry = tk.Entry(report_frame, font=button_font, width=15)
+report_date_entry.insert(0, datetime.today().strftime('%Y-%m-%d'))
+report_date_entry.grid(row=0, column=1, padx=10, pady=5)
+
+report_days_label = tk.Label(report_frame, text="Number of Days:",
+                             font=label_font, bg='#e3f2fd', fg='#01579b')
+report_days_label.grid(row=1, column=0, padx=10, pady=5, sticky='e')
+
+report_days_spinbox = tk.Spinbox(report_frame, from_=1, to=30, font=button_font, width=13)
+report_days_spinbox.delete(0, 'end')
+report_days_spinbox.insert(0, '1')
+report_days_spinbox.grid(row=1, column=1, padx=10, pady=5)
+
 # Frame for action buttons
 button_frame = tk.Frame(gui, bg='#e3f2fd')
 button_frame.pack(pady=15)
@@ -434,6 +580,10 @@ future_swim.grid(row=1, column=0, padx=5, pady=5)
 clear_button = tk.Button(button_frame, text='Clear Output', 
                         command=clear_output, **clear_style)
 clear_button.grid(row=1, column=1, padx=5, pady=5)
+
+report_button = tk.Button(report_frame, text='Generate Detailed Report',
+                          command=generate_report_callback, **button_style)
+report_button.grid(row=2, column=0, columnspan=2, padx=5, pady=10)
 
 # Text output with scrollbar
 output_frame = tk.Frame(gui, bg='#e3f2fd')
